@@ -5,6 +5,7 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { CameraView } from "./CameraView";
 import { SessionSummary } from "./SessionSummary";
+import { FinalSummary } from "./FinalSummary";
 import { 
   similarityScore, 
   computeSessionScore, 
@@ -45,6 +46,8 @@ export function ChallengeFlow({ challengeLevels, poseLibrary, onComplete }: Chal
   const [holdProgress, setHoldProgress] = useState(0);
   const [liveSimilarity, setLiveSimilarity] = useState(0);
   const [showSummary, setShowSummary] = useState(false);
+  const [showFinalSummary, setShowFinalSummary] = useState(false);
+  const [levelScores, setLevelScores] = useState<number[]>(Array(challengeLevels.length).fill(0));
   
   const frameScoresRef = useRef<FrameScore[]>([]);
   const angleTimeSeriesRef = useRef<Record<string, number[]>>({});
@@ -164,24 +167,48 @@ export function ChallengeFlow({ challengeLevels, poseLibrary, onComplete }: Chal
   }, [currentPose]);
 
   const handleNextLevel = useCallback(() => {
+    // Store the score for this level
+    if (sessionData) {
+      const sessionScore = computeSessionScore(frameScoresRef.current, sessionData.stability / 100);
+      const newScores = [...levelScores];
+      newScores[currentLevel] = Math.round(sessionScore);
+      setLevelScores(newScores);
+    }
+
     setShowSummary(false);
     resetLevel();
     
     if (currentLevel < challengeLevels.length - 1) {
       setCurrentLevel(prev => prev + 1);
     } else {
-      onComplete();
+      setShowFinalSummary(true);
     }
-  }, [currentLevel, challengeLevels.length, onComplete, resetLevel]);
+  }, [currentLevel, challengeLevels.length, resetLevel, sessionData, levelScores]);
 
   const handleSkipLevel = useCallback(() => {
+    // Set score to 0 for skipped level
+    const newScores = [...levelScores];
+    newScores[currentLevel] = 0;
+    setLevelScores(newScores);
+
     resetLevel();
     if (currentLevel < challengeLevels.length - 1) {
       setCurrentLevel(prev => prev + 1);
+    } else {
+      setShowFinalSummary(true);
     }
-  }, [currentLevel, challengeLevels.length, resetLevel]);
+  }, [currentLevel, challengeLevels.length, resetLevel, levelScores]);
 
   if (!currentPose) return null;
+
+  if (showFinalSummary) {
+    return (
+      <FinalSummary
+        levelScores={levelScores}
+        onGoHome={onComplete}
+      />
+    );
+  }
 
   if (showSummary && sessionData) {
     return (
