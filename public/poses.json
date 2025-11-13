@@ -484,23 +484,25 @@
       "name": "Warrior II (Virabhadrāsana II)",
       "difficulty": "intermediate"
     },
-    {
+        {
       "level": 3,
-      "slug": "downward-dog",
-      "name": "Downward-Facing Dog (Adho Mukha Śvānāsana)",
-      "difficulty": "intermediate"
-    },
+      "slug": "plank-pose",
+      "name": "Plank Pose (Phalakāsana)",
+      "difficulty": "advanced"
+    }
+
     {
       "level": 4,
       "slug": "triangle-pose",
       "name": "Triangle Pose (Trikonāsana)",
       "difficulty": "advanced"
     },
-    {
+
+        {
       "level": 5,
-      "slug": "plank-pose",
-      "name": "Plank Pose (Phalakāsana)",
-      "difficulty": "advanced"
+      "slug": "downward-dog",
+      "name": "Downward-Facing Dog (Adho Mukha Śvānāsana)",
+      "difficulty": "intermediate"
     }
   ]
 }
