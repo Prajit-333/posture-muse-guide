@@ -45,12 +45,18 @@ export function ChallengeFlow({ challengeLevels, poseLibrary, onComplete }: Chal
   const [countdown, setCountdown] = useState(3);
   const [holdProgress, setHoldProgress] = useState(0);
   const [liveSimilarity, setLiveSimilarity] = useState(0);
+  const [liveFeedback, setLiveFeedback] = useState<string[]>([]);
   const [showSummary, setShowSummary] = useState(false);
   const [showFinalSummary, setShowFinalSummary] = useState(false);
   const [levelScores, setLevelScores] = useState<number[]>(Array(challengeLevels.length).fill(0));
+  const [levelFeedbacks, setLevelFeedbacks] = useState<string[][]>(() => Array.from({ length: challengeLevels.length }, () => []));
   
   const frameScoresRef = useRef<FrameScore[]>([]);
   const angleTimeSeriesRef = useRef<Record<string, number[]>>({});
+  // Buffer angles collected during the current 1s window
+  const lastSecondAnglesRef = useRef<Record<string, number[]>>({});
+  const [liveAnglesAvg, setLiveAnglesAvg] = useState<Record<string, number>>({});
+  const perSecondIntervalRef = useRef<number | null>(null);
   const startTimeRef = useRef<number>(0);
   const [sessionData, setSessionData] = useState<{
     accuracy: number;
@@ -58,6 +64,7 @@ export function ChallengeFlow({ challengeLevels, poseLibrary, onComplete }: Chal
     symmetry: number;
     grade: string;
     feedback: string[];
+    overallScore?: number;
   } | null>(null);
 
   const currentPose = poseLibrary.find(p => p.slug === challengeLevels[currentLevel]?.slug);
@@ -102,6 +109,9 @@ export function ChallengeFlow({ challengeLevels, poseLibrary, onComplete }: Chal
     );
 
     setLiveSimilarity(Math.round(score * 100));
+  // Live feedback hints
+  const hints = generateFeedback(deviations, currentPose.targetAngles, angles, 3);
+  setLiveFeedback(hints);
 
     // Store frame score
     frameScoresRef.current.push({
@@ -116,6 +126,9 @@ export function ChallengeFlow({ challengeLevels, poseLibrary, onComplete }: Chal
         angleTimeSeriesRef.current[angleName] = [];
       }
       angleTimeSeriesRef.current[angleName].push(angles[angleName]);
+      // add to last-second buffer
+      if (!lastSecondAnglesRef.current[angleName]) lastSecondAnglesRef.current[angleName] = [];
+      lastSecondAnglesRef.current[angleName].push(angles[angleName]);
     });
 
     // Update hold progress
@@ -128,6 +141,44 @@ export function ChallengeFlow({ challengeLevels, poseLibrary, onComplete }: Chal
       completeLevel();
     }
   }, [isHolding, currentPose, holdDuration]);
+
+  // Start per-second aggregator when holding starts and stop when it ends
+  useEffect(() => {
+    if (isHolding) {
+      // clear any previous buffer
+      lastSecondAnglesRef.current = {};
+      // Set interval every 1s to compute averages
+      perSecondIntervalRef.current = window.setInterval(() => {
+        const averages: Record<string, number> = {};
+        Object.keys(lastSecondAnglesRef.current).forEach(angleName => {
+          const vals = lastSecondAnglesRef.current[angleName];
+          if (vals && vals.length > 0) {
+            const sum = vals.reduce((a, b) => a + b, 0);
+            averages[angleName] = Math.round(sum / vals.length);
+          }
+        });
+        setLiveAnglesAvg(averages);
+        // clear buffer for next second
+        lastSecondAnglesRef.current = {};
+      }, 1000) as unknown as number;
+    } else {
+      // stop interval
+      if (perSecondIntervalRef.current) {
+        clearInterval(perSecondIntervalRef.current);
+        perSecondIntervalRef.current = null;
+      }
+      // clear live averages
+      setLiveAnglesAvg({});
+      lastSecondAnglesRef.current = {};
+    }
+
+    return () => {
+      if (perSecondIntervalRef.current) {
+        clearInterval(perSecondIntervalRef.current);
+        perSecondIntervalRef.current = null;
+      }
+    };
+  }, [isHolding]);
 
   const completeLevel = useCallback(() => {
     if (!currentPose) return;
@@ -160,8 +211,9 @@ export function ChallengeFlow({ challengeLevels, poseLibrary, onComplete }: Chal
       stability: avgStability,
       symmetry,
       grade,
-      feedback
-    });
+      feedback,
+      overallScore: Math.round(sessionScore)
+    } as any);
 
     setShowSummary(true);
   }, [currentPose]);
@@ -169,10 +221,18 @@ export function ChallengeFlow({ challengeLevels, poseLibrary, onComplete }: Chal
   const handleNextLevel = useCallback(() => {
     // Store the score for this level
     if (sessionData) {
-      const sessionScore = computeSessionScore(frameScoresRef.current, sessionData.stability / 100);
+      // Prefer the already computed overallScore stored in sessionData (set in completeLevel).
+      const sessionScore = typeof sessionData.overallScore === "number"
+        ? sessionData.overallScore
+        : computeSessionScore(frameScoresRef.current, sessionData.stability / 100);
+
       const newScores = [...levelScores];
       newScores[currentLevel] = Math.round(sessionScore);
       setLevelScores(newScores);
+
+      const newFeedbacks = [...levelFeedbacks];
+      newFeedbacks[currentLevel] = sessionData.feedback || [];
+      setLevelFeedbacks(newFeedbacks);
     }
 
     setShowSummary(false);
@@ -185,11 +245,16 @@ export function ChallengeFlow({ challengeLevels, poseLibrary, onComplete }: Chal
     }
   }, [currentLevel, challengeLevels.length, resetLevel, sessionData, levelScores]);
 
+  
+
   const handleSkipLevel = useCallback(() => {
     // Set score to 0 for skipped level
     const newScores = [...levelScores];
     newScores[currentLevel] = 0;
     setLevelScores(newScores);
+    const newFeedbacks = [...levelFeedbacks];
+    newFeedbacks[currentLevel] = [];
+    setLevelFeedbacks(newFeedbacks);
 
     resetLevel();
     if (currentLevel < challengeLevels.length - 1) {
@@ -205,6 +270,9 @@ export function ChallengeFlow({ challengeLevels, poseLibrary, onComplete }: Chal
     return (
       <FinalSummary
         levelScores={levelScores}
+        levelFeedbacks={levelFeedbacks}
+        levelDetails={challengeLevels}
+        poseLibrary={poseLibrary}
         onGoHome={onComplete}
       />
     );
@@ -220,6 +288,7 @@ export function ChallengeFlow({ challengeLevels, poseLibrary, onComplete }: Chal
         symmetry={sessionData.symmetry}
         grade={sessionData.grade}
         feedback={sessionData.feedback}
+        overallScore={sessionData.overallScore}
         onNextLevel={handleNextLevel}
         isLastLevel={currentLevel === challengeLevels.length - 1}
       />
@@ -267,12 +336,58 @@ export function ChallengeFlow({ challengeLevels, poseLibrary, onComplete }: Chal
               <Progress value={holdProgress} className="h-2" />
             )}
 
+            {/* Live feedback (glass card) */}
+            <div className="mt-3">
+              <div className="glass-card p-3 rounded-md">
+                <div className="flex items-center justify-between">
+                  <div className="text-sm font-semibold">Live Feedback</div>
+                  <div className="text-xs text-muted-foreground">Similarity: <span className="font-bold text-accent">{liveSimilarity}%</span></div>
+                </div>
+                <div className="mt-2 text-sm text-muted-foreground">
+                  {liveFeedback.length === 0 ? (
+                    <div className="italic">Hold steady — awaiting pose analysis...</div>
+                  ) : (
+                    <ul className="list-disc list-inside space-y-1">
+                      {liveFeedback.map((f, i) => (
+                        <li key={i}>{f}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Live angles per-second average */}
+            <div className="mt-3">
+              <div className="glass-card p-3 rounded-md">
+                <div className="flex items-center justify-between">
+                  <div className="text-sm font-semibold">Live Angles (1s avg)</div>
+                  <div className="text-xs text-muted-foreground">Updated every second</div>
+                </div>
+                <div className="mt-2 text-sm text-muted-foreground">
+                  {Object.keys(liveAnglesAvg).length === 0 ? (
+                    <div className="italic">No angle data yet</div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2">
+                      {Object.entries(liveAnglesAvg).map(([angle, val]) => (
+                        <div key={angle} className="flex items-center justify-between text-xs">
+                          <div className="capitalize">{angle.replace(/_/g, " ")}</div>
+                          <div className="font-semibold">{val}°</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
             <div className="flex items-center gap-2">
               <Button
                 onClick={() => setCameraActive(true)}
                 disabled={cameraActive}
                 variant="default"
                 size="sm"
+                className="transition-transform hover:scale-105 active:scale-95"
               >
                 <Play className="w-4 h-4 mr-2" />
                 Start Camera
@@ -282,6 +397,7 @@ export function ChallengeFlow({ challengeLevels, poseLibrary, onComplete }: Chal
                 disabled={!cameraActive || isHolding}
                 variant="default"
                 size="sm"
+                className="transition-transform hover:scale-105 active:scale-95"
               >
                 Begin ({countdown > 0 ? countdown : "Go!"})
               </Button>
