@@ -3,21 +3,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Trophy, Home } from "lucide-react";
 import { motion } from "framer-motion";
-import { jsPDF } from "jspdf";
-import { generateReportCanvas } from "@/lib/reportGenerator";
 
 interface FinalSummaryProps {
   levelScores: number[];
-  levelFeedbacks?: string[][];
-  // Accept level details to show info for each level (name, slug, difficulty, thumbnail, tips)
-  levelDetails?: Array<{ level: number; slug: string; name: string; difficulty: string }>;
-  poseLibrary?: Array<any>;
   onGoHome: () => void;
 }
 
-export function FinalSummary({ levelScores, levelFeedbacks, levelDetails, poseLibrary, onGoHome }: FinalSummaryProps) {
-  // levelFeedbacks might be passed in; if not, default to empty arrays
-  const feedbacks = levelFeedbacks || Array(levelScores.length).fill([]);
+export function FinalSummary({ levelScores, onGoHome }: FinalSummaryProps) {
   const totalScore = Math.round(
     levelScores.reduce((sum, score) => sum + score, 0) / levelScores.length
   );
@@ -56,110 +48,6 @@ export function FinalSummary({ levelScores, levelFeedbacks, levelDetails, poseLi
   };
 
   const feedback = getFeedback(totalScore);
-
-  
-
-  // JPG download removed — using PDF and JSON exports to avoid CORS/tainted-canvas issues
-
-  const downloadJpgReport = async () => {
-    try {
-      const canvas = await generateReportCanvas(levelScores, feedbacks, levelDetails, poseLibrary, totalScore);
-      if (!canvas) throw new Error("No canvas generated");
-
-      canvas.toBlob((blob) => {
-        if (!blob) {
-          // fallback to JSON download if image export fails
-          const report = {
-            timestamp: new Date().toISOString(),
-            totalScore: totalScore,
-            levelScores,
-            levelFeedbacks: feedbacks,
-          };
-          const blobJson = new Blob([JSON.stringify(report, null, 2)], { type: "application/json" });
-          const urlJson = URL.createObjectURL(blobJson);
-          const aJson = document.createElement("a");
-          aJson.href = urlJson;
-          aJson.download = `posture-muse-results-${new Date().toISOString()}.json`;
-          aJson.click();
-          URL.revokeObjectURL(urlJson);
-          return;
-        }
-
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `posture-muse-report-${new Date().toISOString()}.jpg`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        setTimeout(() => URL.revokeObjectURL(url), 1000);
-      }, "image/jpeg", 0.92);
-    } catch (err) {
-      console.error("JPG report generation failed, falling back to JSON:", err);
-      // fallback to JSON
-      const report = {
-        timestamp: new Date().toISOString(),
-        totalScore: totalScore,
-        levelScores,
-        levelFeedbacks: feedbacks,
-      };
-      const blob = new Blob([JSON.stringify(report, null, 2)], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `posture-muse-results-${new Date().toISOString()}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
-    }
-  };
-  const downloadPdfReport = async () => {
-    try {
-      const canvas = await generateReportCanvas(levelScores, feedbacks, levelDetails, poseLibrary, totalScore);
-      if (!canvas) throw new Error("No canvas generated");
-
-      const imgData = canvas.toDataURL('image/jpeg', 0.92);
-      const pdf = new jsPDF('p', 'pt', 'a4');
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = pdf.internal.pageSize.getHeight();
-
-      const imgProps = { width: canvas.width, height: canvas.height };
-      const ratio = pdfWidth / imgProps.width;
-      const imgPdfHeight = imgProps.height * ratio;
-
-      if (imgPdfHeight <= pdfHeight) {
-        // Single page
-        pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, imgPdfHeight);
-      } else {
-        // Multiple pages: slice canvas
-        let remainingHeight = imgProps.height;
-        let sourceY = 0;
-        const pageCanvas = document.createElement('canvas');
-        const pageCtx = pageCanvas.getContext('2d');
-        const pxPerPage = Math.floor(pdfHeight / ratio);
-
-        pageCanvas.width = imgProps.width;
-
-        while (remainingHeight > 0) {
-          const h = Math.min(pxPerPage, remainingHeight);
-          pageCanvas.height = h;
-          if (!pageCtx) break;
-          pageCtx.clearRect(0, 0, pageCanvas.width, pageCanvas.height);
-          pageCtx.drawImage(canvas, 0, sourceY, imgProps.width, h, 0, 0, pageCanvas.width, pageCanvas.height);
-          const pageData = pageCanvas.toDataURL('image/jpeg', 0.92);
-          const pagePdfHeight = h * ratio;
-          pdf.addImage(pageData, 'JPEG', 0, 0, pdfWidth, pagePdfHeight);
-          remainingHeight -= h;
-          sourceY += h;
-          if (remainingHeight > 0) pdf.addPage();
-        }
-      }
-
-      pdf.save(`posture-muse-report-${new Date().toISOString()}.pdf`);
-    } catch (err) {
-      console.error('PDF export failed', err);
-      alert('Unable to generate PDF report. Check console for details.');
-    }
-  };
 
   return (
     <motion.div
@@ -233,16 +121,6 @@ export function FinalSummary({ levelScores, levelFeedbacks, levelDetails, poseLi
                 {score === 0 && (
                   <div className="text-xs text-muted-foreground">Skipped</div>
                 )}
-                {feedbacks[idx] && feedbacks[idx].length > 0 && (
-                  <div className="mt-2 text-xs text-muted-foreground text-left">
-                    <div className="font-semibold">Tips:</div>
-                    <ul className="list-disc list-inside space-y-1">
-                      {feedbacks[idx].map((f, i) => (
-                        <li key={i}>{f}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
               </motion.div>
             ))}
           </div>
@@ -256,26 +134,14 @@ export function FinalSummary({ levelScores, levelFeedbacks, levelDetails, poseLi
         transition={{ delay: 0.9 }}
         className="flex justify-center"
       >
-        <div className="flex gap-3">
-          <Button
-            onClick={() => downloadJpgReport()}
-            size="lg"
-            className="gap-2 transition-transform hover:scale-105"
-          >
-            Download Results (JPG)
-          </Button>
-
-          {/* JPG download removed */}
-
-          <Button
-            onClick={onGoHome}
-            size="lg"
-            className="gap-2"
-          >
-            <Home className="w-5 h-5" />
-            Go to Home Page
-          </Button>
-        </div>
+        <Button
+          onClick={onGoHome}
+          size="lg"
+          className="gap-2"
+        >
+          <Home className="w-5 h-5" />
+          Go to Home Page
+        </Button>
       </motion.div>
     </motion.div>
   );

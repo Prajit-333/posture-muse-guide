@@ -12,7 +12,6 @@ interface SessionSummaryProps {
   symmetry: number;
   grade: string;
   feedback: string[];
-  overallScore?: number;
   onNextLevel: () => void;
   isLastLevel: boolean;
 }
@@ -25,7 +24,6 @@ export function SessionSummary({
   symmetry,
   grade,
   feedback,
-  overallScore,
   onNextLevel,
   isLastLevel
 }: SessionSummaryProps) {
@@ -61,7 +59,7 @@ export function SessionSummary({
       </div>
 
       {/* Grade Card */}
-      <Card className="text-center glass-card">
+      <Card className="text-center">
         <CardHeader>
           <CardTitle>Your Performance</CardTitle>
         </CardHeader>
@@ -105,17 +103,6 @@ export function SessionSummary({
         </CardContent>
       </Card>
 
-      {/* Overall Score Card */}
-      <Card className="text-center">
-        <CardHeader>
-          <CardTitle>Overall Score</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="text-5xl font-bold text-accent">{overallScore ?? Math.round((accuracy + stability + symmetry) / 3)} / 100</div>
-          <div className="text-sm text-muted-foreground mt-2">Calculated from accuracy, stability and symmetry</div>
-        </CardContent>
-      </Card>
-
       {/* Feedback Card */}
       {feedback.length > 0 && (
         <motion.div
@@ -148,27 +135,23 @@ export function SessionSummary({
         transition={{ delay: 0.7 }}
         className="flex justify-center"
       >
-        {isLastLevel ? (
-          <div className="flex gap-3">
-            <Button
-              onClick={onNextLevel}
-              size="lg"
-              className="gap-2"
-            >
+        <Button
+          onClick={onNextLevel}
+          size="lg"
+          className="gap-2"
+        >
+          {isLastLevel ? (
+            <>
               <Trophy className="w-5 h-5" />
               Complete Challenge
-            </Button>
-          </div>
-        ) : (
-          <Button
-            onClick={onNextLevel}
-            size="lg"
-            className="gap-2"
-          >
-            Next Level
-            <ArrowRight className="w-5 h-5" />
-          </Button>
-        )}
+            </>
+          ) : (
+            <>
+              Next Level
+              <ArrowRight className="w-5 h-5" />
+            </>
+          )}
+        </Button>
       </motion.div>
     </motion.div>
   );

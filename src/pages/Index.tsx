@@ -146,34 +146,21 @@ const Index = () => {
   }
 
   if (view === "challenge") {
-    const isSinglePractice = !!selectedPose;
-    // build challenge levels: either full challenge or a single pose practice
-    const challengeLevelsToUse = isSinglePractice
-      ? (() => {
-          const p = posesData.library.find(pl => pl.slug === selectedPose);
-          return p ? [{ level: 1, slug: p.slug, name: p.name, difficulty: p.difficulty }] : posesData.challenge;
-        })()
-      : posesData.challenge;
-
     return (
       <div className="min-h-screen bg-background p-4 md:p-8">
         <div className="max-w-7xl mx-auto">
           <Button
             variant="ghost"
-            onClick={() => setView(isSinglePractice ? "main" : "landing")}
+            onClick={() => setView("landing")}
             className="mb-6"
           >
-            ← Back
+            ← Back to Home
           </Button>
 
           <ChallengeFlow
-            challengeLevels={challengeLevelsToUse}
+            challengeLevels={posesData.challenge}
             poseLibrary={posesData.library}
-            onComplete={() => {
-              // after practice/challenge complete, return to appropriate view
-              setView(isSinglePractice ? "main" : "landing");
-              setSelectedPose(null);
-            }}
+            onComplete={() => setView("landing")}
           />
         </div>
       </div>
@@ -225,9 +212,10 @@ const Index = () => {
                   key={pose.slug}
                   {...pose}
                   onSelect={() => {
-                    // Start single-pose practice
                     setSelectedPose(pose.slug);
-                    setView("challenge");
+                    // In a full implementation, this would open a practice view
+                    // For now, we'll just log it
+                    console.log("Selected pose:", pose.slug);
                   }}
                 />
               ))}
